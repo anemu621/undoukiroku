@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="TRAINING LOG" />
+<meta name="theme-color" content="#E8578F" />
+<title>TRAINING LOG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: contain; }
+  .wl-scroll::-webkit-scrollbar { width: 6px; }
+  .wl-scroll::-webkit-scrollbar-thumb { background: #f4c9dc; border-radius: 3px; }
+  .wl-btn:active { transform: scale(0.97); }
+  .wl-card { animation: wl-in 0.25s ease; }
+  @keyframes wl-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  input:focus, textarea:focus { outline: none; border-color: #E8578F !important; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef } = React;
+
+const PINK = "#E8578F";
+const PINK_DARK = "#C9366F";
+const PINK_LIGHT = "#FDEEF4";
+const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+function ymd(y, m, d) {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+function formatDateLabel(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const todayS = todayStr();
+  const yest = new Date();
+  yest.setDate(yest.getDate() - 1);
+  const yestS = yest.toISOString().slice(0, 10);
+  if (dateStr === todayS) return "今日";
+  if (dateStr === yestS) return "昨日";
+  return d.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" });
+}
+
+// ---- localStorage helpers (replaces Claude artifact window.storage) ----
+function loadJSON(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? JSON.parse(v) : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+function saveJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function WorkoutLog() {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [view, setView] = useState("list");
+  const [cursorMonth, setCursorMonth] = useState(() => {
+    const d = new Date();
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+  const [selectedDate, setSelectedDate] = useState(todayStr());
+  const [monthGoals, setMonthGoals] = useState({});
+  const goalSaveTimer = useRef(null);
+
+  const [form, setForm] = useState({ name: "", note: "", weight: "", date: todayStr() });
+
+  useEffect(() => {
+    setEntries(loadJSON("workout-entries", []));
+    setMonthGoals(loadJSON("month-goals", {}));
+    setLoading(false);
+  }, []);
+
+  function persist(next) {
+    setEntries(next);
+    const ok = saveJSON("workout-entries", next);
+    if (!ok) {
+      setError("保存に失敗しました。もう一度お試しください。");
+      setTimeout(() => setError(null), 3000);
+    }
+  }
+
+  function resetForm(date) {
+    setForm({ name: "", note: "", weight: "", date: date || todayStr() });
+  }
+
+  function addEntry(e) {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    const entry = { id: uid(), createdAt: Date.now(), ...form };
+    persist([entry, ...entries]);
+    resetForm();
+    setShowForm(false);
+  }
+
+  function deleteEntry(id) {
+    persist(entries.filter((en) => en.id !== id));
+  }
+
+  const grouped = useMemo(() => {
+    const byDate = {};
+    for (const en of entries) {
+      if (!byDate[en.date]) byDate[en.date] = [];
+      byDate[en.date].push(en);
+    }
+    return Object.entries(byDate).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  }, [entries]);
+
+  const entryCountByDate = useMemo(() => {
+    const map = {};
+    for (const en of entries) map[en.date] = (map[en.date] || 0) + 1;
+    return map;
+  }, [entries]);
+
+  const weightByDate = useMemo(() => {
+    const map = {};
+    for (const en of entries) {
+      if (en.weight && !map[en.date]) map[en.date] = en.weight;
+    }
+    return map;
+  }, [entries]);
+
+  const stats = useMemo(() => {
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const thisWeek = entries.filter((en) => new Date(en.date + "T00:00:00") >= weekAgo).length;
+    return { total: entries.length, thisWeek };
+  }, [entries]);
+
+  const monthGrid = useMemo(() => {
+    const { y, m } = cursorMonth;
+    const firstDay = new Date(y, m, 1);
+    const startWeekday = firstDay.getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < startWeekday; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }, [cursorMonth]);
+
+  const selectedEntries = entries.filter((en) => en.date === selectedDate);
+  const monthKey = `${cursorMonth.y}-${cursorMonth.m}`;
+
+  function handleGoalChange(text) {
+    const next = { ...monthGoals, [monthKey]: text };
+    setMonthGoals(next);
+    if (goalSaveTimer.current) clearTimeout(goalSaveTimer.current);
+    goalSaveTimer.current = setTimeout(() => {
+      const ok = saveJSON("month-goals", next);
+      if (!ok) {
+        setError("保存に失敗しました。もう一度お試しください。");
+        setTimeout(() => setError(null), 3000);
+      }
+    }, 500);
+  }
+
+  function changeMonth(delta) {
+    setCursorMonth((prev) => {
+      let m = prev.m + delta;
+      let y = prev.y;
+      if (m < 0) { m = 11; y -= 1; }
+      if (m > 11) { m = 0; y += 1; }
+      return { y, m };
+    });
+  }
+
+  return (
+    <div style={styles.page}>
+      <div style={styles.header}>
+        <div style={styles.headerTop}>
+          <div style={styles.brand}>
+            <div style={styles.brandMark}>💪</div>
+            <div style={styles.brandText}>TRAINING LOG</div>
+          </div>
+          <div style={styles.viewSwitch}>
+            <button className="wl-btn" style={{ ...styles.viewBtn, ...(view === "list" ? styles.viewBtnActive : {}) }} onClick={() => setView("list")}>
+              <span>📋 リスト</span>
+            </button>
+            <button className="wl-btn" style={{ ...styles.viewBtn, ...(view === "calendar" ? styles.viewBtnActive : {}) }} onClick={() => setView("calendar")}>
+              <span>📅 カレンダー</span>
+            </button>
+          </div>
+        </div>
+
+        <div style={styles.statsRow}>
+          <div style={styles.statCard}>
+            <div style={styles.statNum}>{stats.thisWeek}</div>
+            <div style={styles.statLabel}>今週の記録</div>
+          </div>
+          <div style={{ ...styles.statCard, borderLeft: "1px solid #F6D9E6" }}>
+            <div style={styles.statNum}>{stats.total}</div>
+            <div style={styles.statLabel}>合計記録</div>
+          </div>
+        </div>
+      </div>
+
+      {error && <div style={styles.errorBanner}>{error}</div>}
+
+      {view === "list" ? (
+        <div className="wl-scroll" style={styles.list}>
+          {loading ? (
+            <div style={styles.emptyState}>読み込み中…</div>
+          ) : entries.length === 0 ? (
+            <div style={styles.emptyState}>
+              <div style={{ fontSize: 28 }}>🔥</div>
+              <div style={{ marginTop: 10, fontWeight: 700 }}>まだ記録がありません</div>
+              <div style={{ marginTop: 4, color: "#B0708C", fontSize: 13 }}>下の「+」ボタンから最初の運動を記録しましょう</div>
+            </div>
+          ) : (
+            grouped.map(([date, items]) => (
+              <div key={date} style={{ marginBottom: 22 }}>
+                <div style={styles.dateHeader}>
+                  <span style={styles.dateHeaderText}>{formatDateLabel(date)}</span>
+                  <span style={styles.dateHeaderSub}>{date}</span>
+                </div>
+                {items.map((en) => (
+                  <EntryCard key={en.id} entry={en} onDelete={() => deleteEntry(en.id)} />
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="wl-scroll" style={styles.list}>
+          <div style={styles.calHeader}>
+            <button className="wl-btn" style={styles.calNavBtn} onClick={() => changeMonth(-1)}>‹</button>
+            <div style={styles.calMonthLabel}>{cursorMonth.y}年{cursorMonth.m + 1}月</div>
+            <button className="wl-btn" style={styles.calNavBtn} onClick={() => changeMonth(1)}>›</button>
+          </div>
+
+          <textarea
+            style={styles.goalInput}
+            placeholder="今月の目標を書く"
+            value={monthGoals[monthKey] || ""}
+            onChange={(e) => handleGoalChange(e.target.value)}
+          />
+
+          <div style={styles.weekdayRow}>
+            {WEEKDAYS.map((w) => (<div key={w} style={styles.weekdayCell}>{w}</div>))}
+          </div>
+
+          <div style={styles.calGrid}>
+            {monthGrid.map((d, i) => {
+              if (d === null) return <div key={i} style={styles.calCellEmpty} />;
+              const dateStr = ymd(cursorMonth.y, cursorMonth.m, d);
+              const count = entryCountByDate[dateStr] || 0;
+              const weight = weightByDate[dateStr];
+              const isSelected = dateStr === selectedDate;
+              const isToday = dateStr === todayStr();
+              return (
+                <button
+                  key={i}
+                  className="wl-btn"
+                  onClick={() => setSelectedDate(dateStr)}
+                  style={{
+                    ...styles.calCell,
+                    ...(count > 0 ? styles.calCellHasEntry : {}),
+                    ...(isToday && !isSelected ? styles.calCellToday : {}),
+                    ...(isSelected ? styles.calCellSelected : {}),
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: isToday ? 800 : 500 }}>{d}</span>
+                  {weight && (
+                    <span style={{ ...styles.calWeight, color: isSelected ? "#fff" : PINK_DARK }}>{weight}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <div style={styles.dateHeader}>
+              <span style={styles.dateHeaderText}>{formatDateLabel(selectedDate)}の記録</span>
+              <span style={styles.dateHeaderSub}>{selectedDate}</span>
+            </div>
+            {selectedEntries.length === 0 ? (
+              <div style={{ ...styles.emptyState, padding: "30px 20px" }}>
+                <div style={{ color: "#B0708C", fontSize: 13 }}>この日はまだ記録がありません</div>
+              </div>
+            ) : (
+              selectedEntries.map((en) => (
+                <EntryCard key={en.id} entry={en} onDelete={() => deleteEntry(en.id)} />
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      <button
+        className="wl-btn"
+        style={styles.fab}
+        onClick={() => { resetForm(view === "calendar" ? selectedDate : todayStr()); setShowForm(true); }}
+        aria-label="運動を記録"
+      >+</button>
+
+      {showForm && (
+        <div style={styles.modalOverlay} onClick={() => setShowForm(false)}>
+          <form style={styles.modal} onClick={(e) => e.stopPropagation()} onSubmit={addEntry}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitle}>運動を記録</div>
+              <button type="button" className="wl-btn" style={styles.closeBtn} onClick={() => setShowForm(false)}>✕</button>
+            </div>
+
+            <label style={styles.label}>今日やったこと</label>
+            <input
+              style={styles.input}
+              placeholder="例：ベンチプレス、ランニング"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              autoFocus
+              required
+            />
+
+            <label style={styles.label}>日付</label>
+            <input
+              type="date"
+              style={{ ...styles.input, width: 160 }}
+              value={form.date}
+              onChange={(e) => setForm({ ...form, date: e.target.value })}
+            />
+
+            <label style={styles.label}>体重(kg)</label>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              style={{ ...styles.input, width: 110 }}
+              placeholder="60.0"
+              value={form.weight}
+              onChange={(e) => setForm({ ...form, weight: e.target.value })}
+            />
+
+            <label style={styles.label}>メモ</label>
+            <textarea
+              style={{ ...styles.input, minHeight: 56, resize: "vertical", fontFamily: "inherit" }}
+              placeholder="調子や気づいたことを記録"
+              value={form.note}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+            />
+
+            <button type="submit" className="wl-btn" style={styles.submitBtn}>記録する</button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EntryCard({ entry, onDelete }) {
+  return (
+    <div className="wl-card" style={styles.card}>
+      <div style={styles.cardStripe} />
+      <div style={styles.cardBody}>
+        <div style={styles.cardTopRow}>
+          <div style={styles.exName}>{entry.name}</div>
+          <button className="wl-btn" onClick={onDelete} style={styles.deleteBtn} aria-label="削除">🗑</button>
+        </div>
+        {entry.weight && <div style={styles.weightPill}>体重 {entry.weight}kg</div>}
+        {entry.note && <div style={styles.note}>{entry.note}</div>}
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  page: { minHeight: "100vh", background: PINK_LIGHT, color: "#4A2C3A", fontFamily: "'Noto Sans JP', sans-serif", display: "flex", flexDirection: "column", position: "relative" },
+  header: { padding: "22px 18px 0", background: "#fff", borderBottom: "1px solid #F6D9E6" },
+  headerTop: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 8, flexWrap: "wrap" },
+  brand: { display: "flex", alignItems: "center", gap: 10 },
+  brandMark: { width: 34, height: 34, borderRadius: 8, background: PINK, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 16 },
+  brandText: { fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, letterSpacing: 2, color: PINK_DARK },
+  viewSwitch: { display: "flex", background: "#FDEEF4", borderRadius: 20, padding: 3, gap: 2 },
+  viewBtn: { display: "flex", alignItems: "center", gap: 4, border: "none", background: "transparent", color: "#C98AA8", fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 16, cursor: "pointer" },
+  viewBtnActive: { background: PINK, color: "#fff" },
+  statsRow: { display: "flex", paddingBottom: 16 },
+  statCard: { flex: 1, textAlign: "center", padding: "0 6px" },
+  statNum: { fontFamily: "'JetBrains Mono', monospace", fontSize: 26, fontWeight: 700, color: PINK, lineHeight: 1 },
+  statLabel: { fontSize: 11, color: "#B0708C", marginTop: 6 },
+  errorBanner: { margin: "10px 18px 0", padding: "8px 12px", background: "#FBE4EC", border: "1px solid #F0A8C4", color: "#B0356A", fontSize: 12, borderRadius: 8 },
+  list: { flex: 1, overflowY: "auto", padding: "18px 16px 100px" },
+  emptyState: { textAlign: "center", color: "#4A2C3A", padding: "60px 20px", display: "flex", flexDirection: "column", alignItems: "center" },
+  dateHeader: { display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10, padding: "0 2px" },
+  dateHeaderText: { fontWeight: 700, fontSize: 14, color: "#4A2C3A" },
+  dateHeaderSub: { fontSize: 11, color: "#C98AA8", fontFamily: "'JetBrains Mono', monospace" },
+  card: { display: "flex", background: "#fff", border: "1px solid #F6D9E6", borderRadius: 12, marginBottom: 10, overflow: "hidden" },
+  cardStripe: { width: 4, background: PINK },
+  cardBody: { flex: 1, padding: "12px 14px" },
+  cardTopRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  deleteBtn: { background: "none", border: "none", padding: 4, cursor: "pointer", borderRadius: 6, lineHeight: 1, fontSize: 14 },
+  exName: { fontSize: 16, fontWeight: 700, color: "#4A2C3A" },
+  note: { marginTop: 8, fontSize: 12.5, color: "#B0708C", lineHeight: 1.5 },
+  weightPill: { display: "inline-block", marginTop: 8, fontSize: 11.5, fontWeight: 700, color: PINK_DARK, background: "#FDEEF4", borderRadius: 20, padding: "2px 10px", fontFamily: "'JetBrains Mono', monospace" },
+  fab: { position: "fixed", bottom: 24, right: 20, width: 56, height: 56, borderRadius: "50%", background: PINK, border: "none", boxShadow: "0 6px 16px rgba(232,87,143,0.4)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", fontSize: 26, fontWeight: 700 },
+  calHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
+  calNavBtn: { width: 32, height: 32, borderRadius: "50%", border: "1px solid #F6D9E6", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: PINK_DARK, fontSize: 18 },
+  calMonthLabel: { fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#4A2C3A" },
+  goalInput: { width: "100%", background: "#FFF7FA", border: "1px dashed #F0C4D8", borderRadius: 10, padding: "9px 12px", color: "#4A2C3A", fontSize: 13, fontFamily: "inherit", resize: "none", minHeight: 40, marginBottom: 16 },
+  weekdayRow: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 6 },
+  weekdayCell: { textAlign: "center", fontSize: 11, color: "#C98AA8", fontWeight: 700, padding: "4px 0" },
+  calGrid: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 },
+  calCellEmpty: { aspectRatio: "1" },
+  calCell: { aspectRatio: "1", border: "1px solid #F6D9E6", background: "#fff", borderRadius: 10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, cursor: "pointer", color: "#4A2C3A" },
+  calCellToday: { border: "1px solid " + PINK, color: PINK_DARK },
+  calCellHasEntry: { background: "#FBDCEB", borderColor: "#F6C2DC" },
+  calCellSelected: { background: PINK, borderColor: PINK, color: "#fff" },
+  calWeight: { fontSize: 9.5, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 },
+  modalOverlay: { position: "fixed", inset: 0, background: "rgba(74,44,58,0.4)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 },
+  modal: { background: "#fff", borderTop: "1px solid #F6D9E6", borderRadius: "16px 16px 0 0", width: "100%", maxWidth: 480, padding: "18px 18px 24px", display: "flex", flexDirection: "column", gap: 4, maxHeight: "88vh", overflowY: "auto" },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  modalTitle: { fontSize: 17, fontWeight: 700, color: "#4A2C3A" },
+  closeBtn: { background: "none", border: "none", cursor: "pointer", padding: 4, fontSize: 14, color: "#C98AA8" },
+  label: { fontSize: 11.5, color: "#B0708C", marginTop: 10, marginBottom: 5, fontWeight: 600 },
+  input: { width: "100%", background: "#FFF7FA", border: "1px solid #F0C4D8", borderRadius: 8, padding: "10px 12px", color: "#4A2C3A", fontSize: 14 },
+  submitBtn: { marginTop: 18, background: PINK, color: "#fff", border: "none", borderRadius: 10, padding: "13px 0", fontSize: 15, fontWeight: 700, cursor: "pointer" },
+};
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<WorkoutLog />);
+</script>
+</body>
+</html>

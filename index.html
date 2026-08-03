@@ -48,7 +48,7 @@
   .date-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; padding: 0 2px; }
   .date-header-text { font-weight: 700; font-size: 14px; color: #4A2C3A; }
   .date-header-sub { font-size: 11px; color: #C98AA8; font-family: 'JetBrains Mono', monospace; }
-  .card { display: flex; background: #fff; border: 1px solid #F6D9E6; border-radius: 12px; margin-bottom: 10px; overflow: hidden; animation: wl-in 0.2s ease; }
+  .card { display: flex; background: #fff; border: 1px solid #F6D9E6; border-radius: 12px; margin-bottom: 10px; overflow: hidden; animation: wl-in 0.2s ease; cursor: pointer; }
   @keyframes wl-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   .card-stripe { width: 4px; background: var(--pink); }
   .card-body { flex: 1; padding: 12px 14px; }
@@ -438,7 +438,7 @@ function renderEntryCard(entry) {
     ? escapeHtml(entry.name)
     : '<span style="color:#C98AA8;">体重の記録</span>';
   return (
-    '<div class="card">' +
+    '<div class="card" data-action="edit-workout" data-date="' + entry.date + '">' +
       '<div class="card-stripe"></div>' +
       '<div class="card-body">' +
         '<div class="card-top-row">' +
@@ -459,7 +459,7 @@ function renderMealCard(meal) {
     : '<div class="meal-thumb" style="display:flex;align-items:center;justify-content:center;font-size:22px;">' + fallbackIcon + '</div>';
   var noteHtml = meal.note ? '<div class="note" style="margin-top:2px;">' + escapeHtml(meal.note) + '</div>' : "";
   return (
-    '<div class="card">' +
+    '<div class="card" data-action="edit-meal-entry" data-date="' + meal.date + '" data-mealtype="' + escapeHtml(meal.mealType) + '">' +
       '<div class="card-stripe" style="background:var(--pink-dark);"></div>' +
       '<div class="meal-card-body">' +
         thumb +
@@ -816,14 +816,39 @@ function attachEvents() {
   });
 
   app.querySelectorAll('[data-action="delete"]').forEach(function (btn) {
-    btn.addEventListener("click", function () {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
       deleteEntry(btn.getAttribute("data-id"));
     });
   });
 
   app.querySelectorAll('[data-action="delete-meal"]').forEach(function (btn) {
-    btn.addEventListener("click", function () {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
       deleteMeal(btn.getAttribute("data-id"));
+    });
+  });
+
+  app.querySelectorAll('[data-action="edit-workout"]').forEach(function (card) {
+    card.addEventListener("click", function () {
+      state.formDate = card.getAttribute("data-date");
+      state.formTab = "workout";
+      state.showForm = true;
+      render();
+      syncModalToViewport();
+    });
+  });
+
+  app.querySelectorAll('[data-action="edit-meal-entry"]').forEach(function (card) {
+    card.addEventListener("click", function () {
+      state.formDate = card.getAttribute("data-date");
+      state.formTab = "meal";
+      state.formMealType = card.getAttribute("data-mealtype");
+      var existingMeal = state.meals.find(function (m) { return m.date === state.formDate && m.mealType === state.formMealType; });
+      pendingPhotoDataUrl = existingMeal ? existingMeal.photo : null;
+      state.showForm = true;
+      render();
+      syncModalToViewport();
     });
   });
 
@@ -912,6 +937,7 @@ function attachEvents() {
       syncPendingPhoto();
       state.showForm = true;
       render();
+      syncModalToViewport();
     });
   }
 
@@ -948,6 +974,22 @@ function attachEvents() {
       }
     });
   }
+}
+
+// ---------- keep modal visible above keyboard (iOS visualViewport fix) ----------
+function syncModalToViewport() {
+  var overlay = document.querySelector(".modal-overlay");
+  if (!overlay || !window.visualViewport) return;
+  var vv = window.visualViewport;
+  overlay.style.position = "fixed";
+  overlay.style.left = "0px";
+  overlay.style.top = vv.offsetTop + "px";
+  overlay.style.width = vv.width + "px";
+  overlay.style.height = vv.height + "px";
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncModalToViewport);
+  window.visualViewport.addEventListener("scroll", syncModalToViewport);
 }
 
 // ---------- init ----------

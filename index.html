@@ -982,6 +982,8 @@ function syncModalToViewport() {
   overlay.style.top = vv.offsetTop + "px";
   overlay.style.width = vv.width + "px";
   overlay.style.height = vv.height + "px";
+  var modal = overlay.querySelector(".modal");
+  if (modal) modal.style.maxHeight = Math.round(vv.height * 0.9) + "px";
 }
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", syncModalToViewport);

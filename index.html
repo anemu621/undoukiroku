@@ -988,6 +988,16 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener("scroll", syncModalToViewport);
 }
 
+// 入力欄をタップしたら、キーボードが出た後にその欄が見える位置まで自動スクロール
+document.addEventListener("focusin", function (e) {
+  var el = e.target;
+  if (!el.closest || !el.closest(".modal")) return;
+  if (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA") return;
+  setTimeout(function () {
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, 350);
+});
+
 // ---------- init ----------
 render();
 (async function init() {

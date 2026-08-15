@@ -107,7 +107,9 @@
   .chart-value-label { font-size: 10px; fill: #C9366F; font-weight: 700; }
   .gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .gallery-item { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #FDEEF4; cursor: pointer; }
-  .gallery-item.gallery-empty { background: transparent; border: 1px dashed #F0C4D8; cursor: default; }
+  .gallery-item.gallery-empty { background: transparent; border: 1px dashed #F0C4D8; cursor: default; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+  .gallery-empty-icon { font-size: 20px; opacity: 0.6; }
+  .gallery-empty-label { font-size: 9px; color: #C98AA8; font-weight: 700; }
   .gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .photo-viewer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 60; }
   .photo-viewer-overlay img { max-width: 92vw; max-height: 85vh; object-fit: contain; border-radius: 4px; }
@@ -755,7 +757,7 @@ function renderGallery() {
           '<div class="gallery-date">' + date.slice(5) + '</div>' +
         '</div>';
       } else {
-        html += '<div class="gallery-item gallery-empty"></div>';
+        html += '<div class="gallery-item gallery-empty"><div class="gallery-empty-icon">💤</div><div class="gallery-empty-label">お休み</div></div>';
       }
     });
   });

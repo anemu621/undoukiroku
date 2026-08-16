@@ -695,7 +695,7 @@ function renderWeightChart() {
     var showLabel = (i === 0 || i === n - 1 || i % Math.ceil(n / 6) === 0);
     return '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3" fill="#E8A93A" stroke="#fff" stroke-width="1.5" />' +
       (showLabel ? '<text class="chart-value-label" x="' + x.toFixed(1) + '" y="' + (y - 8).toFixed(1) + '" text-anchor="middle">' + p.weight + '</text>' : '') +
-      '<text class="chart-point-label" x="' + x.toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + p.date.slice(5) + '</text>';
+      (showLabel ? '<text class="chart-point-label" x="' + x.toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + p.date.slice(5) + '</text>' : '');
   }).join("");
 
   var gridLines = "";

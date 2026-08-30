@@ -174,6 +174,11 @@ contain; border-radius: 4px; }
 .photo-viewer-close { position: absolute; top: 18px; right: 18px; background:
 rgba(255,255,255,0.15); border: none; color: #fff; width: 36px; height: 36px;
 border-radius: 50%; font-size: 18px; cursor: pointer; }
+.photo-viewer-count { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 12px; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 12px; font-family: 'JetBrains Mono', monospace; }
+.photo-viewer-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.18); border: none; color: #fff; width: 44px; height: 44px; border-radius: 50%; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.photo-viewer-prev { left: 10px; }
+.photo-viewer-next { right: 10px; }
+.photo-viewer-delete { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.15); border: none; color: #fff; font-size: 13px; padding: 8px 18px; border-radius: 20px; cursor: pointer; }
 .gallery-date { position: absolute; bottom: 0; left: 0; right: 0; background:
 rgba(74,44,58,0.55); color: #fff; font-size: 9px; padding: 3px 5px; font-family:
 'JetBrains Mono', monospace; }
@@ -254,7 +259,8 @@ formMealType: "朝",
 error: null,
 saving: false,
 savedFlash: false,
-viewingPhoto: null
+viewingPhoto: null,
+viewingMotivationIndex: null
 };
 var pendingPhotoDataUrl = null;
 var MEAL_TYPES = ["朝", "昼", "夜", "アルコール"];
@@ -831,22 +837,14 @@ return (
 '</div>'
 );
 }
-var html = '<div class="list">';
-state.motivations.forEach(function (mo) {
-var noteHtml = mo.note ? '<div class="note" style="margin-top:2px;">' + escapeHtml(mo.note) + '</div>' : "";
-html += '<div class="card">' +
-'<div class="card-stripe" style="background:var(--pink-dark);"></div>' +
-'<div class="meal-card-body">' +
-'<img class="meal-thumb" data-action="view-photo-motivation" data-id="' + mo.id + '" src="' + mo.photo + '" alt="" />' +
-'<div style="flex:1;min-width:0;">' +
-'<div class="meal-chip">' + mo.date + '</div>' +
-noteHtml +
-'</div>' +
-'<button class="delete-btn" data-action="delete-motivation" data-id="' + mo.id + '" aria-label="削除">🗑</button>' +
-'</div>' +
+var html = '<div class="list"><div class="gallery-grid">';
+state.motivations.forEach(function (mo, idx) {
+html += '<div class="gallery-item" data-action="view-motivation" data-index="' + idx + '">' +
+'<img src="' + mo.photo + '" alt="" />' +
+'<div class="gallery-date">' + mo.date.slice(5) + '</div>' +
 '</div>';
 });
-html += '</div>';
+html += '</div></div>';
 return html;
 }
 function renderGallery() {
@@ -890,6 +888,24 @@ html += '</div></div>';
 return html;
 }
 function renderPhotoViewer() {
+if (state.viewingMotivationIndex !== null) {
+var list = state.motivations;
+if (list.length === 0) { state.viewingMotivationIndex = null; return ""; }
+var idx = Math.max(0, Math.min(state.viewingMotivationIndex, list.length - 1));
+var mo = list[idx];
+var hasPrev = idx > 0;
+var hasNext = idx < list.length - 1;
+return (
+'<div class="photo-viewer-overlay" data-action="close-viewer" id="photo-viewer">' +
+'<button class="photo-viewer-close" data-action="close-viewer">✕</button>' +
+'<div class="photo-viewer-count">' + (idx + 1) + ' / ' + list.length + '</div>' +
+(hasPrev ? '<button class="photo-viewer-nav photo-viewer-prev" data-action="prev-motivation-photo">‹</button>' : '') +
+(hasNext ? '<button class="photo-viewer-nav photo-viewer-next" data-action="next-motivation-photo">›</button>' : '') +
+'<img src="' + mo.photo + '" alt="" />' +
+'<button class="photo-viewer-delete" data-action="delete-motivation" data-id="' + mo.id + '">🗑 削除</button>' +
+'</div>'
+);
+}
 if (!state.viewingPhoto) return "";
 return (
 '<div class="photo-viewer-overlay" data-action="close-viewer">' +
@@ -960,18 +976,61 @@ deleteMeal(btn.getAttribute("data-id"));
 app.querySelectorAll('[data-action="delete-motivation"]').forEach(function (btn) {
 btn.addEventListener("click", function (e) {
 e.stopPropagation();
+var wasViewing = state.viewingMotivationIndex !== null;
 deleteMotivation(btn.getAttribute("data-id"));
+if (wasViewing) {
+state.viewingMotivationIndex = null;
+}
 });
 });
-app.querySelectorAll('[data-action="view-photo-motivation"]').forEach(function (img) {
-img.addEventListener("click", function () {
-var mo = state.motivations.find(function (m) { return m.id === img.getAttribute("data-id"); });
-if (mo && mo.photo) {
-state.viewingPhoto = mo.photo;
+app.querySelectorAll('[data-action="view-motivation"]').forEach(function (item) {
+item.addEventListener("click", function () {
+state.viewingMotivationIndex = parseInt(item.getAttribute("data-index"), 10);
+render();
+});
+});
+app.querySelectorAll('[data-action="prev-motivation-photo"]').forEach(function (btn) {
+btn.addEventListener("click", function (e) {
+e.stopPropagation();
+if (state.viewingMotivationIndex > 0) {
+state.viewingMotivationIndex -= 1;
 render();
 }
 });
 });
+app.querySelectorAll('[data-action="next-motivation-photo"]').forEach(function (btn) {
+btn.addEventListener("click", function (e) {
+e.stopPropagation();
+if (state.viewingMotivationIndex < state.motivations.length - 1) {
+state.viewingMotivationIndex += 1;
+render();
+}
+});
+});
+var photoViewerEl = document.getElementById("photo-viewer");
+if (photoViewerEl) {
+var mvTouchStartX = null;
+photoViewerEl.addEventListener("touchstart", function (e) {
+mvTouchStartX = e.touches[0].clientX;
+});
+photoViewerEl.addEventListener("touchend", function (e) {
+if (mvTouchStartX === null) return;
+var dx = e.changedTouches[0].clientX - mvTouchStartX;
+mvTouchStartX = null;
+var threshold = 40;
+if (dx > threshold) {
+if (state.viewingMotivationIndex > 0) {
+state.viewingMotivationIndex -= 1;
+render();
+}
+} else if (dx < -threshold) {
+if (state.viewingMotivationIndex < state.motivations.length - 1) {
+state.viewingMotivationIndex += 1;
+render();
+}
+}
+});
+}
 app.querySelectorAll('[data-action="edit-workout"]').forEach(function (card) {
 card.addEventListener("click", function () {
 state.formDate = card.getAttribute("data-date");
@@ -1008,6 +1067,7 @@ render();
 app.querySelectorAll('[data-action="close-viewer"]').forEach(function (el) {
 el.addEventListener("click", function () {
 state.viewingPhoto = null;
+state.viewingMotivationIndex = null;
 render();
 });
 });

@@ -705,7 +705,7 @@ var tabsHtml =
 '</div>';
 var workoutFieldsHtml =
 '<label class="field-label">今日やったこと</label>' +
-'<input class="field-input" id="f-name" placeholder="例：ベンチプレス、ランニング（体重だけでもOK）" value="' + escapeHtml(existingEntry.name) + '" />' +
+'<textarea class="field-input" id="f-name" placeholder="例：ベンチプレス、ランニング（体重だけでもOK）">' + escapeHtml(existingEntry.name) + '</textarea>' +
 '<label class="field-label">日付</label>' +
 '<input class="field-input" style="width:160px;" type="date" id="f-date" value="' + state.formDate + '" />' +
 '<label class="field-label">体重(kg)</label>' +

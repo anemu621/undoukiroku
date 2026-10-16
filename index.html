@@ -224,7 +224,11 @@ var d = new Date(dateStr + "T00:00:00");
 var todayS = todayStr();
 var yest = new Date();
 yest.setDate(yest.getDate() - 1);
-var yestS = yest.toISOString().slice(0, 10);
+// Use local date parts (like todayStr()/ymd()), not toISOString(), which
+// converts to UTC and can land on the wrong day depending on the time of
+// day and timezone (e.g. early morning in JST rolls back to the day
+// before yesterday).
+var yestS = ymd(yest.getFullYear(), yest.getMonth(), yest.getDate());
 if (dateStr === todayS) return "今日";
 if (dateStr === yestS) return "昨日";
 return d.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday:

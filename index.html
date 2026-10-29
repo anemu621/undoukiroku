@@ -191,20 +191,70 @@ rgba(232,87,143,0.85); color: #fff; font-size: 9px; padding: 1px 6px; border-rad
 <script>
 "use strict";
 // ---------- storage helpers (persistent, per-user) ----------
+var idbPromise = null;
+function openDB() {
+if (idbPromise) return idbPromise;
+idbPromise = new Promise(function (resolve, reject) {
+try {
+var req = indexedDB.open("training-db", 1);
+req.onupgradeneeded = function () { req.result.createObjectStore("kv"); };
+req.onsuccess = function () { resolve(req.result); };
+req.onerror = function () { reject(req.error); };
+} catch (e) { reject(e); }
+});
+return idbPromise;
+}
+function idbGet(key) {
+return openDB().then(function (db) {
+return new Promise(function (resolve, reject) {
+var r = db.transaction("kv", "readonly").objectStore("kv").get(key);
+r.onsuccess = function () { resolve(r.result); };
+r.onerror = function () { reject(r.error); };
+});
+});
+}
+function idbSet(key, value) {
+return openDB().then(function (db) {
+return new Promise(function (resolve, reject) {
+var tx = db.transaction("kv", "readwrite");
+tx.objectStore("kv").put(value, key);
+tx.oncomplete = function () { resolve(); };
+tx.onerror = function () { reject(tx.error); };
+tx.onabort = function () { reject(tx.error); };
+});
+});
+}
+// IndexedDB has far more room than localStorage (which fills up with photos).
+// Old localStorage data is copied over once, then removed to free space.
 async function loadJSON(key, fallback) {
 try {
+var v = await idbGet(key);
+if (v !== undefined) return v;
+} catch (e) { /* fall through to localStorage */ }
+var local;
+try {
 var raw = localStorage.getItem(key);
-return raw ? JSON.parse(raw) : fallback;
-} catch (e) {
-return fallback;
-}
+if (raw) local = JSON.parse(raw);
+} catch (e) { local = undefined; }
+if (local === undefined) return fallback;
+try {
+await idbSet(key, local);
+localStorage.removeItem(key);
+} catch (e) { /* keep localStorage copy if migration fails */ }
+return local;
 }
 async function saveJSON(key, value) {
 try {
-localStorage.setItem(key, JSON.stringify(value));
+await idbSet(key, JSON.parse(JSON.stringify(value)));
+try { localStorage.removeItem(key); } catch (e) {}
 return { ok: true };
 } catch (e) {
-return { ok: false, error: (e && (e.message || e.toString())) || "unknown-error" };
+try {
+localStorage.setItem(key, JSON.stringify(value));
+return { ok: true };
+} catch (e2) {
+return { ok: false, error: (e2 && (e2.message || e2.toString())) || "unknown-error" };
+}
 }
 }
 // ---------- date helpers ----------

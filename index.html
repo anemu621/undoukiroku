@@ -301,6 +301,7 @@ motivations: [],
 monthGoals: {},
 loaded: false,
 view: "calendar",
+chartRange: "30",
 cursorMonth: (function () {
 var d = new Date();
 return { y: d.getFullYear(), m: d.getMonth() };
@@ -819,6 +820,14 @@ var points = state.entries
 })
 .filter(function (p) { return !isNaN(p.weight); })
 .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+var range = state.chartRange || "30";
+var firstEver = points.length ? points[0].weight : 0;
+if (range !== "all" && points.length) {
+var cd = new Date(); cd.setDate(cd.getDate() - parseInt(range, 10));
+var cutoff = cd.getFullYear() + "-" + ("0" + (cd.getMonth() + 1)).slice(-2) + "-" + ("0" + cd.getDate()).slice(-2);
+var inRange = points.filter(function (p) { return p.date >= cutoff; });
+points = inRange.length ? inRange : points.slice(-1);
+}
 var body = '<div class="list">';
 if (points.length === 0) {
 body += '<div class="chart-wrap"><div class="chart-empty">まだ体重の記録がありません<br>運動を記録する時に体重も入力すると、ここにグラフが表示されます</div></div>';
@@ -860,7 +869,7 @@ padR) + '" y2="' + gy.toFixed(1) + '" stroke="#F5E8C8" stroke-width="1" />' +
 gw.toFixed(1) + '</text>';
 }
 var latest = points[points.length - 1].weight;
-var first = points[0].weight;
+var first = firstEver;
 var diff = (latest - first).toFixed(1);
 var diffLabel = diff > 0 ? "+" + diff + "kg" : diff + "kg";
 body += '<div class="chart-wrap">' +
@@ -869,6 +878,12 @@ body += '<div class="chart-wrap">' +
 +
 '<div style="font-size:12px;color:#B0708C;">直近 <span style="color:#C9366F;font-weight:700;">' + latest + 'kg</span>（' + diffLabel +
 '）</div>' +
+'</div>' +
+'<div style="display:flex;gap:6px;margin-bottom:8px;">' +
+[["30", "1ヶ月"], ["90", "3ヶ月"], ["all", "全部"]].map(function (r) {
+var on = range === r[0];
+return '<button type="button" data-action="chart-range" data-range="' + r[0] + '" style="flex:1;border:1px solid #F6D9E6;border-radius:999px;padding:6px 0;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;background:' + (on ? "#E8548F" : "#FFF5F9") + ';color:' + (on ? "#fff" : "#C98AA8") + ';">' + r[1] + '</button>';
+}).join("") +
 '</div>' +
 '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;">' +
 gridLines +
@@ -1142,6 +1157,12 @@ var existingMeal = state.meals.find(function (m) { return m.date ===
 state.formDate && m.mealType === state.formMealType; });
 pendingPhotoDataUrl = existingMeal ? existingMeal.photo : null;
 }
+app.querySelectorAll('[data-action="chart-range"]').forEach(function (btn) {
+btn.addEventListener("click", function () {
+state.chartRange = btn.getAttribute("data-range");
+render();
+});
+});
 app.querySelectorAll('[data-action="form-tab"]').forEach(function (btn) {
 btn.addEventListener("click", function () {
 var dateEl = document.getElementById("f-date") ||
